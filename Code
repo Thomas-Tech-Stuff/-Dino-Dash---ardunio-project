@@ -1,0 +1,148 @@
+
+//The imports we need for the arduino to communicate with the LCD screen
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+// Might have to change the "0x27" to a different value depending on which I2C module you're using with your LCD screen.
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//Dinosaur sprite the looks more like a creeper from minecraft but I tried my best
+byte dinoSprite[] = { B01111, B01010, B01111, B00110, B00110, B00110, B01001, B01001 };
+//sprite for the cactus
+byte cactusSprite[] = { B00100, B00100, B01101, B01101, B01111, B00100, B00100, B01110 };
+//sprite for the star
+byte star[] = {B00000,B00100,B10101,B01110,B10101,B00100,B00000,B00000};
+
+
+// Game Variables
+int dinoRow = 1; // Keeps track what row dino is on. Used for moving dino up and down row when button pressed
+int cactusX = 8;// cactus starting positon
+// I want the star to spawn randomly a distance of 3-5 rows away from the cacus's position.
+// Originally I made both of them spawn randomly but it created a softlock when they would spawn far too close together.
+int starX = cactusX + random(3, 5);
+int minutes = 0, seconds = 0;// minutes and seconds variables initialised at 0. The timer starts from 0 and counts up
+unsigned long lastTick = 0;
+unsigned long lastMove = 0;
+bool gameStarted = false;// A variable that lets the program know if the game has begun
+bool gameOver = false;// A variable that lets the program know if the game is over
+int lastButtonState = LOW;
+
+// A function that will Display the game screen or the game over screen.
+void drawGame() {
+  lcd.clear();
+
+  //Displays the game over screen
+  if (gameOver) {
+    //Displays a game over message in the first row and the players time in the second row
+    lcd.setCursor(3, 0);
+    lcd.print("GAME OVER!");
+    lcd.setCursor(0, 1);
+    lcd.print("Time: ");
+    lcd.print("S ");
+    lcd.print(seconds);
+    lcd.print(" ");
+    lcd.print("M ");
+    lcd.print(minutes);
+    return;
+  }
+
+  // Displays the time in the game screen
+  lcd.setCursor(14, 0); 
+  if (minutes < 10) lcd.print("0"); lcd.print(minutes);
+  lcd.setCursor(14, 1); 
+  if (seconds < 10) lcd.print("0"); lcd.print(seconds);
+
+// The following statements displays the cactus, star and dino on the game screen.
+// It continously redraws them depending on their current row or column
+  lcd.setCursor(cactusX, 1);
+  lcd.write(byte(1));
+
+  lcd.setCursor(starX, 0);
+  lcd.write(byte(2));
+
+  lcd.setCursor(1, dinoRow);
+  lcd.write(byte(0));
+}
+
+
+void setup() {
+  pinMode(2, INPUT);
+
+  // Initialising the screen and variables for the screen
+  //creates and displays the start screen
+
+  lcd.init();
+  lcd.backlight();
+  lcd.createChar(0, dinoSprite);
+  lcd.createChar(1, cactusSprite);
+  lcd.createChar(2, star);
+  
+  lcd.setCursor(0, 0); lcd.print("Dino Dash");
+  lcd.setCursor(0, 1); lcd.print("Press to Start");
+}
+
+
+void loop() {
+  
+  int currentButtonState = digitalRead(2);
+
+  // Reset/Start/Jump Logic
+  if (currentButtonState == HIGH && lastButtonState == LOW) {
+    if (gameOver) {
+      // resets the game if the user chooses to play again by pressing the button in the game over screen
+
+      seconds = 0; minutes = 0;cactusX = 8; starX = cactusX + random(3, 5);
+      gameOver = false; gameStarted = true;
+
+    } else if (!gameStarted) {
+      // starts the game if it hasn't started yet and the user has pressed the button
+      gameStarted = true;
+    }
+    //Moves the dino up and down when the user presses the button
+    dinoRow = (dinoRow == 1) ? 0 : 1; 
+
+    drawGame();
+    // Software debouncer for the button I'm using with the arduino.
+    delay(100);
+  }
+
+  lastButtonState = currentButtonState;
+
+  if (gameStarted && !gameOver) {
+    // below is all the logic for the timer
+    unsigned long now = millis();
+
+    // Timer Ticks every second 
+    if (now - lastTick >= 1000) {
+      lastTick = now;
+      if (++seconds >= 60) { seconds = 0; minutes++; }
+      drawGame();
+    }
+
+    //  Movement of cactus and star. They move columns every 200ms
+    if (now - lastMove >= 200) {
+      lastMove = now;
+      cactusX--;
+      starX--;
+
+      if (cactusX < 0) cactusX = 8;// Reset cactus to it's starting position when it goes off the screen.
+      if(starX<0) starX = cactusX + random(3, 5); // reset star to it's starting position when it goes off the screen.
+    
+
+      
+      // if the cactus hits the dino end the game
+      if (cactusX == 1 && dinoRow == 1) {
+        gameOver = true;
+        gameStarted = false;
+      }
+
+
+      // if the Dino hits the star end the game
+       if (starX == 0 && dinoRow == 0) {
+        gameOver = true;
+        gameStarted = false;
+       }
+
+      drawGame();
+    }
+  }
+}
